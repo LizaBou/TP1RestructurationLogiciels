@@ -20,7 +20,7 @@ import hai913i.tp1.metrics.MetricsCalculator;
 import hai913i.tp1.parse.JdtParser;
 import hai913i.tp1.parse.JdtParser.ParsedFile;
 import hai913i.tp1.parse.ProjectSources;
-
+import hai913i.tp1.metrics.MetricsCalculator.ClassMethod;
 /**
  * Point d'entrée en ligne de commande de l'analyseur (version de départ).
  *
@@ -41,6 +41,16 @@ public final class Main {
             System.exit(2);
         }
         Path project = Path.of(args[0]);
+        int threshold = 5; // valeur par defaut si non fournie (la vraie gestion d'erreur viendra en B4)
+        if (args.length >= 2) {
+            try {
+                threshold = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                System.err.println("Erreur : le seuil X doit etre un entier, recu '" + args[1] + "'");
+                System.exit(4);
+                return;
+            }
+        }
         ProjectSources sources;
         try {
             sources = ProjectSources.of(project);
@@ -130,6 +140,44 @@ public final class Main {
         System.out.printf("Q5 moyenne methodes/classe     : %.2f%n", metrics.averageMethodsPerClass());
         System.out.printf("Q6 moyenne lignes/methode      : %.2f%n", metrics.averageLinesPerMethod(allMethodLines));
         System.out.printf("Q7 moyenne attributs/classe    : %.2f%n", metrics.averageFieldsPerClass());
+        System.out.println();
+        System.out.println("=== Metriques B2 (Q8-Q13) ===");
+
+        System.out.println("Q8 top 10% classes (methodes) :");
+        for (ClassInfo c : metrics.topClassesByMethodCount()) {
+            System.out.println("  " + c.getQualifiedName() + " (" + c.getMethods().size() + " methodes)");
+        }
+
+        System.out.println("Q9 top 10% classes (attributs) :");
+        for (ClassInfo c : metrics.topClassesByFieldCount()) {
+            System.out.println("  " + c.getQualifiedName() + " (" + c.getFields().size() + " attributs)");
+        }
+
+        System.out.println("Q10 intersection Q8/Q9 :");
+        for (ClassInfo c : metrics.classesInBothTopCategories()) {
+            System.out.println("  " + c.getQualifiedName());
+        }
+
+        System.out.println("Q11 classes avec plus de " + threshold + " methodes :");
+        for (ClassInfo c : metrics.classesAboveMethodThreshold(threshold)) {
+            System.out.println("  " + c.getQualifiedName() + " (" + c.getMethods().size() + " methodes)");
+        }
+
+        System.out.println("Q12 top 10% methodes par classe (lignes) :");
+        for (var entry : metrics.topMethodsPerClass().entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                System.out.println("  " + entry.getKey() + " :");
+                for (MethodInfo m : entry.getValue()) {
+                    System.out.println("    " + m.getName() + " (" + m.getLineCount() + " lignes)");
+                }
+            }
+        }
+
+        System.out.println("Q13 methodes avec le plus de parametres :");
+        for (ClassMethod cm : metrics.methodsWithMaxParameters()) {
+            System.out.println("  " + cm.className() + "." + cm.method().getName()
+                    + " (" + cm.method().getParameterCount() + " parametres)");
+        }
 
         int internal2 = 0, external2 = 0, unresolved2 = 0;
         for (CallRecord c : model.getCalls()) {
