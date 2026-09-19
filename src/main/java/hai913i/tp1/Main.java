@@ -13,8 +13,9 @@ import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import hai913i.tp1.extract.CallExtractor;
 import hai913i.tp1.model.CallRecord;
-
+import hai913i.tp1.model.ProjectModel;
 import org.eclipse.jdt.core.compiler.IProblem;
+import hai913i.tp1.metrics.MetricsCalculator;
 
 import hai913i.tp1.parse.JdtParser;
 import hai913i.tp1.parse.JdtParser.ParsedFile;
@@ -70,17 +71,7 @@ public final class Main {
             allClasses.addAll(extractor.extract(file.unit()));
         }
 
-        System.out.println();
-        System.out.println("=== Structure extraite : " + allClasses.size() + " classes ===");
-        for (ClassInfo ci : allClasses) {
-            System.out.println(ci);
-            for (FieldInfo f : ci.getFields()) {
-                System.out.println("    attribut: " + f);
-            }
-            for (MethodInfo m : ci.getMethods()) {
-                System.out.println("    methode : " + m);
-            }
-        }
+
         // Ensemble des noms qualifiés de classes du projet (pour distinguer interne/externe)
         Set<String> projectClassNames = new HashSet<>();
         for (ClassInfo ci : allClasses) {
@@ -104,13 +95,51 @@ public final class Main {
             else internal++;
         }
 
+        ProjectModel model = new ProjectModel(allClasses, allCalls);
+
         System.out.println();
-        System.out.println("=== Appels extraits : " + allCalls.size() + " ===");
-        System.out.println("Internes: " + internal + "  Externes: " + external + "  Non resolus: " + unresolved);
-        for (CallRecord c : allCalls) {
-            System.out.println("  " + c);
+        System.out.println("=== Modele du projet : " + model.getClasses().size() + " classes ===");
+        for (ClassInfo ci : model.getClasses()) {
+            System.out.println(ci);
+            for (FieldInfo f : ci.getFields()) {
+                System.out.println("    attribut: " + f);
+            }
+            for (MethodInfo m : ci.getMethods()) {
+                System.out.println("    methode : " + m);
+            }
         }
 
+        MetricsCalculator metrics = new MetricsCalculator(model);
+
+        List<java.nio.file.Path> javaFiles = files.stream().map(ParsedFile::path).toList();
+        long totalLines = metrics.applicationLineCount(javaFiles);
+
+        List<Integer> allMethodLines = new ArrayList<>();
+        for (ClassInfo ci : model.getClasses()) {
+            for (MethodInfo m : ci.getMethods()) {
+                allMethodLines.add(m.getLineCount());
+            }
+        }
+
+        System.out.println();
+        System.out.println("=== Metriques B2 (Q1-Q7) ===");
+        System.out.printf("Q1 nombre de classes          : %d%n", metrics.classCount());
+        System.out.printf("Q2 lignes de l'application     : %d%n", totalLines);
+        System.out.printf("Q3 nombre total de methodes    : %d%n", metrics.totalMethodCount());
+        System.out.printf("Q4 nombre de paquetages        : %d%n", metrics.packageCount());
+        System.out.printf("Q5 moyenne methodes/classe     : %.2f%n", metrics.averageMethodsPerClass());
+        System.out.printf("Q6 moyenne lignes/methode      : %.2f%n", metrics.averageLinesPerMethod(allMethodLines));
+        System.out.printf("Q7 moyenne attributs/classe    : %.2f%n", metrics.averageFieldsPerClass());
+
+        int internal2 = 0, external2 = 0, unresolved2 = 0;
+        for (CallRecord c : model.getCalls()) {
+            if (!c.isResolved()) unresolved2++;
+            else if (c.isExternal()) external2++;
+            else internal2++;
+        }
+        System.out.println();
+        System.out.println("=== Appels du modele : " + model.getCalls().size() + " ===");
+        System.out.println("Internes: " + internal2 + "  Externes: " + external2 + "  Non resolus: " + unresolved2);
       //  for (ParsedFile file : files) {
        //     if (file.path().toString().endsWith("Dvd.java")
        //             || file.path().toString().endsWith("Category.java")) {

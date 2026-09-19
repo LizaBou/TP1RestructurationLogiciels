@@ -3,47 +3,51 @@ package hai913i.tp1.extract;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
+import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
+import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
-import org.eclipse.jdt.core.dom.ITypeBinding;
 
 import hai913i.tp1.model.ClassInfo;
 import hai913i.tp1.model.FieldInfo;
 import hai913i.tp1.model.MethodInfo;
 
+/**
+ * Etape A2 (+ complement pour B2) : extrait la structure du projet
+ * (classes, attributs, methodes, heritage) a partir des AST JDT.
+ */
 public class StructureExtractor {
 
     public List<ClassInfo> extract(CompilationUnit cu) {
         List<ClassInfo> result = new ArrayList<>();
-        collectTypes(cu.types(), result);
+        collectTypes(cu, cu.types(), result);
         return result;
     }
 
-    // Parcourt une liste de déclarations de type de premier niveau,
-    // et redescend dans les classes membres (imbriquées) récursivement.
-    private void collectTypes(List<?> types, List<ClassInfo> result) {
+    // Parcourt une liste de declarations de type de premier niveau,
+    // et redescend dans les classes membres (imbriquees) recursivement.
+    private void collectTypes(CompilationUnit cu, List<?> types, List<ClassInfo> result) {
         for (Object obj : types) {
             AbstractTypeDeclaration type = (AbstractTypeDeclaration) obj;
             ClassInfo info = extractOne(type);
             result.add(info);
 
-            // classes imbriquées : on redescend dans bodyDeclarations()
+            // classes imbriquees : on redescend dans bodyDeclarations()
             for (Object member : type.bodyDeclarations()) {
                 if (member instanceof AbstractTypeDeclaration nested) {
                     ClassInfo nestedInfo = extractOne(nested);
                     result.add(nestedInfo);
-                    fillFieldsAndMethods(nested, nestedInfo);
+                    fillFieldsAndMethods(cu, nested, nestedInfo);
                 }
             }
-            fillFieldsAndMethods(type, info);
+            fillFieldsAndMethods(cu, type, info);
         }
     }
 
@@ -71,7 +75,7 @@ public class StructureExtractor {
         return info;
     }
 
-    private void fillFieldsAndMethods(AbstractTypeDeclaration type, ClassInfo info) {
+    private void fillFieldsAndMethods(CompilationUnit cu, AbstractTypeDeclaration type, ClassInfo info) {
         for (Object obj : type.bodyDeclarations()) {
             BodyDeclaration decl = (BodyDeclaration) obj;
             if (decl instanceof FieldDeclaration fd) {
@@ -82,12 +86,26 @@ public class StructureExtractor {
                     info.getFields().add(new FieldInfo(frag.getName().getIdentifier(), fieldType, visibility));
                 }
             } else if (decl instanceof MethodDeclaration md) {
+                int lineCount = computeLineCount(cu, md);
                 info.getMethods().add(new MethodInfo(
                         md.getName().getIdentifier(),
                         md.parameters().size(),
-                        md.isConstructor()));
+                        md.isConstructor(),
+                        lineCount));
             }
         }
+    }
+
+    // §4.2 : lignes physiques du corps, de l'accolade ouvrante a la fermante incluses.
+    // 0 pour une methode sans corps (abstraite, interface).
+    private int computeLineCount(CompilationUnit cu, MethodDeclaration md) {
+        Block body = md.getBody();
+        if (body == null) {
+            return 0;
+        }
+        int startLine = cu.getLineNumber(body.getStartPosition());
+        int endLine = cu.getLineNumber(body.getStartPosition() + body.getLength() - 1);
+        return endLine - startLine + 1;
     }
 
     private String visibilityOf(int modifiers) {

@@ -19,3 +19,4 @@ __MACOSX/
 # Sorties generees par l'analyseur
 *.dot.png
 *.log
+sortie*.txt
