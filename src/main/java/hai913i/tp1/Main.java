@@ -1,34 +1,33 @@
 package hai913i.tp1;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import org.eclipse.jdt.core.compiler.IProblem;
+import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
+import org.eclipse.jdt.core.dom.ITypeBinding;
+
+import hai913i.tp1.extract.CallExtractor;
 import hai913i.tp1.extract.StructureExtractor;
+import hai913i.tp1.graph.CallGraph;
+import hai913i.tp1.metrics.MetricsCalculator;
+import hai913i.tp1.metrics.MetricsCalculator.ClassMethod;
+import hai913i.tp1.model.CallRecord;
 import hai913i.tp1.model.ClassInfo;
 import hai913i.tp1.model.FieldInfo;
 import hai913i.tp1.model.MethodInfo;
-import hai913i.tp1.visit.TreePrinterVisitor;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
-import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
-import org.eclipse.jdt.core.dom.ITypeBinding;
-import hai913i.tp1.extract.CallExtractor;
-import hai913i.tp1.model.CallRecord;
 import hai913i.tp1.model.ProjectModel;
-import org.eclipse.jdt.core.compiler.IProblem;
-import hai913i.tp1.metrics.MetricsCalculator;
-
 import hai913i.tp1.parse.JdtParser;
 import hai913i.tp1.parse.JdtParser.ParsedFile;
 import hai913i.tp1.parse.ProjectSources;
-import hai913i.tp1.metrics.MetricsCalculator.ClassMethod;
+
 /**
- * Point d'entrée en ligne de commande de l'analyseur (version de départ).
+ * Point d'entrée en ligne de commande de l'analyseur.
  *
- * Le squelette ne vérifie que l'environnement (point de contrôle A0) : il analyse le projet et affiche
- * le nombre d'unités de compilation et d'erreurs. Tout le reste est à concevoir : extraction de la
- * structure, appels, métriques, graphe d'appel, options comme le seuil X.
- *
- * Usage : java -jar target/hai913i-tp1-analyzer.jar DOSSIER_DU_PROJET
+ * Usage : java -jar target/hai913i-tp1-analyzer.jar DOSSIER_DU_PROJET [SEUIL_X]
  */
 public final class Main {
 
@@ -76,11 +75,10 @@ public final class Main {
         System.out.println("Erreurs de compilation : " + errors);
 
         StructureExtractor extractor = new StructureExtractor();
-        List<ClassInfo> allClasses = new java.util.ArrayList<>();
+        List<ClassInfo> allClasses = new ArrayList<>();
         for (ParsedFile file : files) {
             allClasses.addAll(extractor.extract(file.unit()));
         }
-
 
         // Ensemble des noms qualifiés de classes du projet (pour distinguer interne/externe)
         Set<String> projectClassNames = new HashSet<>();
@@ -96,13 +94,6 @@ public final class Main {
                 AbstractTypeDeclaration type = (AbstractTypeDeclaration) obj;
                 addCallsRecursively(file, type, callExtractor, allCalls);
             }
-        }
-
-        int internal = 0, external = 0, unresolved = 0;
-        for (CallRecord c : allCalls) {
-            if (!c.isResolved()) unresolved++;
-            else if (c.isExternal()) external++;
-            else internal++;
         }
 
         ProjectModel model = new ProjectModel(allClasses, allCalls);
@@ -121,7 +112,7 @@ public final class Main {
 
         MetricsCalculator metrics = new MetricsCalculator(model);
 
-        List<java.nio.file.Path> javaFiles = files.stream().map(ParsedFile::path).toList();
+        List<Path> javaFiles = files.stream().map(ParsedFile::path).toList();
         long totalLines = metrics.applicationLineCount(javaFiles);
 
         List<Integer> allMethodLines = new ArrayList<>();
@@ -140,6 +131,7 @@ public final class Main {
         System.out.printf("Q5 moyenne methodes/classe     : %.2f%n", metrics.averageMethodsPerClass());
         System.out.printf("Q6 moyenne lignes/methode      : %.2f%n", metrics.averageLinesPerMethod(allMethodLines));
         System.out.printf("Q7 moyenne attributs/classe    : %.2f%n", metrics.averageFieldsPerClass());
+
         System.out.println();
         System.out.println("=== Metriques B2 (Q8-Q13) ===");
 
@@ -188,17 +180,31 @@ public final class Main {
         System.out.println();
         System.out.println("=== Appels du modele : " + model.getCalls().size() + " ===");
         System.out.println("Internes: " + internal2 + "  Externes: " + external2 + "  Non resolus: " + unresolved2);
-      //  for (ParsedFile file : files) {
-       //     if (file.path().toString().endsWith("Dvd.java")
-       //             || file.path().toString().endsWith("Category.java")) {
-        //        System.out.println("=== " + file.path() + " ===");
-      //          file.unit().accept(new TreePrinterVisitor());
-       //     }
-       // }
 
-        // À FAIRE (A1 et suite) : parcourir les AST avec vos visiteurs, construire votre modèle de faits,
-        // puis calculer les métriques et le graphe d'appel. Gardez cette classe courte : elle lit les
-        // arguments et délègue.
+        // ===== B3 : graphe d'appel =====
+        CallGraph graph = new CallGraph(model);
+
+        System.out.println();
+        System.out.println("=== Graphe d'appel (B3) ===");
+        System.out.println(graph.toReport());
+
+        // Verifications ciblees du point de controle B3
+        String catalogAdd2 = "library.service.Catalog#add(library.model.Item,library.model.Item)";
+        String catalogAdd1 = "library.service.Catalog#add(library.model.Item)";
+        System.out.println("Verif Catalog#add(Item,Item) -> Catalog#add(Item) :");
+        System.out.println("  poids = " + graph.callees(catalogAdd2).getOrDefault(catalogAdd1, 0));
+
+        String textUtilsRepeat = "library.util.TextUtils#repeat(java.lang.String,int)";
+        System.out.println("Verif recursion TextUtils#repeat :");
+        System.out.println("  poids = " + graph.callees(textUtilsRepeat).getOrDefault(textUtilsRepeat, 0));
+
+        String loanableCheckOut = "library.model.Loanable#checkOut(library.model.Member)";
+        System.out.println("Verif appelantes de Loanable#checkOut(Member) :");
+        System.out.println("  " + graph.callers(loanableCheckOut));
+
+        String itemCheckOut = "library.model.Item#checkOut(library.model.Member)";
+        System.out.println("Verif appelantes de Item#checkOut(Member) (doit etre vide) :");
+        System.out.println("  " + graph.callers(itemCheckOut));
     }
 
     private static void addCallsRecursively(ParsedFile file, AbstractTypeDeclaration type,

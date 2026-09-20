@@ -87,11 +87,13 @@ public class StructureExtractor {
                 }
             } else if (decl instanceof MethodDeclaration md) {
                 int lineCount = computeLineCount(cu, md);
+                String signature = computeSignature(md);
                 info.getMethods().add(new MethodInfo(
                         md.getName().getIdentifier(),
                         md.parameters().size(),
                         md.isConstructor(),
-                        lineCount));
+                        lineCount,
+                        signature));
             }
         }
     }
@@ -106,6 +108,18 @@ public class StructureExtractor {
         int startLine = cu.getLineNumber(body.getStartPosition());
         int endLine = cu.getLineNumber(body.getStartPosition() + body.getLength() - 1);
         return endLine - startLine + 1;
+    }
+
+    // Signature utilisee comme identifiant de noeud dans le graphe d'appel (B3).
+    // Meme format que SignatureUtil.signatureOf(IMethodBinding), pour que les
+    // arcs calcules par CallExtractor se relient correctement.
+    private String computeSignature(MethodDeclaration md) {
+        var binding = md.resolveBinding();
+        if (binding != null) {
+            return SignatureUtil.signatureOf(binding);
+        }
+        // repli si le binding echoue (rare) : nom + nombre de parametres seulement
+        return md.getName().getIdentifier() + "(" + md.parameters().size() + " param. non resolus)";
     }
 
     private String visibilityOf(int modifiers) {

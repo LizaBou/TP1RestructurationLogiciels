@@ -46,8 +46,12 @@ public class CallExtractor {
     private void extractForMethod(CompilationUnit cu, MethodDeclaration method,
                                   String qualifiedTypeName, List<CallRecord> out) {
         String methodName = method.isConstructor() ? "<init>" : method.getName().getIdentifier();
-        ITypeBinding enclosingType = method.resolveBinding() != null
-                ? method.resolveBinding().getDeclaringClass() : null;
+        IMethodBinding methodOwnBinding = method.resolveBinding();
+        ITypeBinding enclosingType = methodOwnBinding != null
+                ? methodOwnBinding.getDeclaringClass() : null;
+        String callerSignature = (methodOwnBinding != null)
+                ? SignatureUtil.signatureOf(methodOwnBinding)
+                : methodName + "(" + method.parameters().size() + " param. non resolus)";
 
         Block body = method.getBody();
         body.accept(new ASTVisitor() {
@@ -56,7 +60,7 @@ public class CallExtractor {
             public boolean visit(MethodInvocation node) {
                 handleInvocation(node, node.getName().getIdentifier(),
                         node.resolveMethodBinding(), node.getExpression(), enclosingType,
-                        false, cu, qualifiedTypeName, methodName, out);
+                        false, cu, qualifiedTypeName, methodName, callerSignature, out);
                 return true; // continue : on veut aussi les appels dans les lambdas/args
             }
 
@@ -64,7 +68,7 @@ public class CallExtractor {
             public boolean visit(SuperMethodInvocation node) {
                 handleInvocation(node, node.getName().getIdentifier(),
                         node.resolveMethodBinding(), null, enclosingType,
-                        true, cu, qualifiedTypeName, methodName, out);
+                        true, cu, qualifiedTypeName, methodName, callerSignature, out);
                 return true;
             }
         });
@@ -73,7 +77,7 @@ public class CallExtractor {
     private void handleInvocation(ASTNode node, String calleeName, IMethodBinding methodBinding,
                                   Expression receiverExpr, ITypeBinding enclosingType, boolean isSuperCall,
                                   CompilationUnit cu, String callerClass, String callerMethod,
-                                  List<CallRecord> out) {
+                                  String callerSignature, List<CallRecord> out) {
 
         int line = cu.getLineNumber(node.getStartPosition());
         String receiverType = resolveReceiverType(receiverExpr, methodBinding, enclosingType, isSuperCall);
@@ -85,11 +89,11 @@ public class CallExtractor {
         if (resolved) {
             ITypeBinding declaring = methodBinding.getDeclaringClass();
             String declQualified = declaring != null ? declaring.getErasure().getQualifiedName() : "?";
-            targetSignature = declQualified + "#" + signatureOf(methodBinding);
+            targetSignature = declQualified + "#" + SignatureUtil.signatureOf(methodBinding);
             external = declaring == null || !projectClassNames.contains(declQualified);
         }
 
-        out.add(new CallRecord(callerClass, callerMethod, line, calleeName,
+        out.add(new CallRecord(callerClass, callerMethod, callerSignature, line, calleeName,
                 receiverType, targetSignature, external, resolved));
     }
 
@@ -119,12 +123,6 @@ public class CallExtractor {
     }
 
     private String signatureOf(IMethodBinding mb) {
-        StringBuilder sb = new StringBuilder(mb.getName()).append("(");
-        ITypeBinding[] params = mb.getMethodDeclaration().getParameterTypes();
-        for (int i = 0; i < params.length; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(params[i].getErasure().getQualifiedName());
-        }
-        return sb.append(")").toString();
+        return SignatureUtil.signatureOf(mb);
     }
 }
