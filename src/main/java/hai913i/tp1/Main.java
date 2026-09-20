@@ -60,6 +60,11 @@ public final class Main {
         }
 
         List<ParsedFile> files = JdtParser.parse(sources, List.of());
+        if (files.isEmpty()) {
+            System.err.println("Erreur : aucun fichier .java trouve dans " + sources.sourceRoot());
+            System.exit(5);
+            return;
+        }
         int errors = 0;
         for (ParsedFile file : files) {
             for (IProblem problem : file.unit().getProblems()) {
